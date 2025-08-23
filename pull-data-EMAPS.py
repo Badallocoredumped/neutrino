@@ -149,214 +149,6 @@ def transform_and_save_data():
     return transformed_files
 
 # === STEP 3: LOAD TO DATABASE ===
-def load_transformed_data_to_database():
-    """Step 3: Load all transformed files to database"""
-    print(f"\n🔄 STEP 3: Loading data to database")
-    
-    repo = EnergyDataRepository()
-    
-    try:
-        # Find all transformed files
-        power_files = glob.glob("transformed/power_breakdown_transformed_*.jsonl")
-        carbon_files = glob.glob("transformed/carbon_intensity_transformed_*.jsonl")
-        
-        total_power_records = 0
-        total_carbon_records = 0
-        
-        # Load power files
-        for transformed_file in power_files:
-            print(f"📥 Loading power file: {transformed_file}")
-            
-            # Load transformed data
-            records = []
-            with open(transformed_file, "r") as f:
-                for line in f:
-                    if line.strip():
-                        records.append(json.loads(line))
-            
-            if records:
-                # Convert to DataFrame for database insertion
-                df = pd.DataFrame(records)
-                df["datetime"] = pd.to_datetime(df["datetime"])
-                
-                print(f"🔄 Processing {len(df)} power records from {transformed_file}")
-                repo.save_power_data(df)
-                total_power_records += len(df)
-        
-        # Load carbon files
-        for transformed_file in carbon_files:
-            print(f"📥 Loading carbon file: {transformed_file}")
-            
-            # Load transformed data
-            records = []
-            with open(transformed_file, "r") as f:
-                for line in f:
-                    if line.strip():
-                        records.append(json.loads(line))
-            
-            if records:
-                # Convert to DataFrame for database insertion
-                df = pd.DataFrame(records)
-                df["datetime"] = pd.to_datetime(df["datetime"])
-                if "updatedAt" in df.columns:
-                    df["updatedAt"] = pd.to_datetime(df["updatedAt"])
-                if "createdAt" in df.columns:
-                    df["createdAt"] = pd.to_datetime(df["createdAt"])
-                
-                print(f"🔄 Processing {len(df)} carbon records from {transformed_file}")
-                repo.save_carbon_data(df)
-                total_carbon_records += len(df)
-        
-        print(f"✅ Step 3 completed - Database loaded")
-        print(f"📊 Total records processed: {total_power_records} power, {total_carbon_records} carbon")
-        
-    except Exception as e:
-        print(f"❌ Error in Step 3: {e}")
-        raise
-    finally:
-        repo.close()
-
-# === MAIN PIPELINE ===
-def run_full_pipeline():
-    """Run the complete pipeline: Fetch → Transform → Load"""
-    print("🚀 Starting Full Data Pipeline")
-    print("=" * 50)
-    
-    try:
-        # Step 1: Fetch raw data
-        fetch_and_save_raw_data()
-        
-        # Step 2: Transform data
-        transform_and_save_data()
-        
-        # Step 3: Load to database
-        load_transformed_data_to_database()
-        
-        print("\n🎉 Pipeline completed successfully!")
-        print("=" * 50)
-        
-    except Exception as e:
-        print(f"💥 Pipeline failed: {e}")
-        import traceback
-        traceback.print_exc()
-
-# === INDIVIDUAL STEP FUNCTIONS ===
-def run_step_1_only():
-    """Run only Step 1: Fetch and save raw data"""
-    fetch_and_save_raw_data()
-
-def run_step_2_only():
-    """Run only Step 2: Transform existing raw data"""
-    transform_and_save_data()
-
-def run_step_3_only():
-    """Run only Step 3: Load existing transformed data to database"""
-    load_transformed_data_to_database()
-
-# === EXISTING TRANSFORM FUNCTIONS ===
-def transform_power_breakdown(raw_data: list) -> pd.DataFrame:
-    """Transforms raw power breakdown JSON into flat, clean DataFrame."""
-    records = []
-    for entry in raw_data:
-        flat = {
-            "datetime": entry.get("datetime"),
-            "zone": entry.get("zone"),
-            "powerConsumptionTotal": entry.get("powerConsumptionTotal"),
-        }
-
-        # Unpack the power production breakdown
-        breakdown = entry.get("powerProductionBreakdown", {})
-        for k, v in breakdown.items():
-            # Handle None values convert to 0 for calculations
-            flat[f"production_{k}"] = v if v is not None else 0
-
-        # Compute totals with None handling
-        fossil_sources = ["coal", "gas", "oil"]
-        renewable_sources = ["wind", "solar", "hydro", "biomass", "geothermal"]
-
-        # Use 0 if value is None
-        flat["fossil_total"] = sum(
-            breakdown.get(source, 0) or 0 for source in fossil_sources
-        )
-        flat["renewable_total"] = sum(
-            breakdown.get(source, 0) or 0 for source in renewable_sources
-        )
-
-        # Calculate total generation with None handling
-        total_gen = sum(v or 0 for v in breakdown.values())
-        flat["total_generation"] = total_gen
-        
-        # % renewable
-        flat["percent_renewable"] = (
-            round(100 * flat["renewable_total"] / total_gen, 2) if total_gen > 0 else 0
-        )
-        
-        # % fossil
-        flat["percent_fossil"] = (
-            round(100 * flat["fossil_total"] / total_gen, 2) if total_gen > 0 else 0
-        )
-
-        records.append(flat)
-
-    df = pd.DataFrame(records)
-    df["datetime"] = pd.to_datetime(df["datetime"])
-    return df
-
-def transform_carbon_intensity(raw_data: list) -> pd.DataFrame:
-    """Transforms raw carbon intensity JSON into flat, clean DataFrame."""
-    records = []
-    for entry in raw_data:
-        flat = {
-            "datetime": entry.get("datetime"),
-            "zone": entry.get("zone"),
-            "carbonIntensity": entry.get("carbonIntensity"),
-            "updatedAt": entry.get("updatedAt"),
-            "createdAt": entry.get("createdAt"),
-            "emissionFactorType": entry.get("emissionFactorType"),
-            "isEstimated": entry.get("isEstimated"),
-            "estimationMethod": entry.get("estimationMethod"),
-            "temporalGranularity": entry.get("temporalGranularity")
-        }
-        
-        # Add computed fields
-        carbon_intensity = entry.get("carbonIntensity", 0)
-        
-        # Categorize carbon intensity levels
-        if carbon_intensity < 200:
-            flat["carbon_level"] = "Low"
-        elif carbon_intensity < 400:
-            flat["carbon_level"] = "Medium"
-        elif carbon_intensity < 600:
-            flat["carbon_level"] = "High"
-        else:
-            flat["carbon_level"] = "Very High"
-        
-        # Calculate time since update (in hours)
-        if entry.get("updatedAt") and entry.get("datetime"):
-            updated_time = pd.to_datetime(entry["updatedAt"])
-            data_time = pd.to_datetime(entry["datetime"])
-            flat["hours_since_update"] = round((updated_time - data_time).total_seconds() / 3600, 2)
-        else:
-            flat["hours_since_update"] = None
-
-        records.append(flat)
-
-    df = pd.DataFrame(records)
-    df["datetime"] = pd.to_datetime(df["datetime"])
-    df["updatedAt"] = pd.to_datetime(df["updatedAt"])
-    df["createdAt"] = pd.to_datetime(df["createdAt"])
-    return df
-
-# === MAIN EXECUTION ===
-if __name__ == "__main__":
-    # Run the full pipeline
-    run_full_pipeline()
-    
-    
-    # run_step_1_only()  # Just fetch
-    # run_step_2_only()  # Just transform
-    # run_step_3_only()  # Just load to DB
-
 def load_all_transformed_data_to_database():
     """Step 3: Load ALL transformed JSONL files to database (comprehensive approach)"""
     print(f"\n🔄 STEP 3: Loading ALL transformed data to database")
@@ -454,76 +246,21 @@ def load_all_transformed_data_to_database():
     finally:
         repo.close()
 
-def show_transformed_file_summary():
-    """Show summary of all transformed files"""
-    print("📋 TRANSFORMED FILES SUMMARY")
-    print("=" * 50)
-    
-    power_files = glob.glob("transformed/power_breakdown_transformed_*.jsonl")
-    carbon_files = glob.glob("transformed/carbon_intensity_transformed_*.jsonl")
-    
-    total_power_records = 0
-    total_carbon_records = 0
-    
-    print("🔋 POWER FILES:")
-    for file in sorted(power_files):
-        with open(file, 'r') as f:
-            count = sum(1 for line in f if line.strip())
-            total_power_records += count
-            
-            # Get time range
-            with open(file, 'r') as f2:
-                lines = [line for line in f2 if line.strip()]
-                if lines:
-                    first = json.loads(lines[0])
-                    last = json.loads(lines[-1])
-                    print(f"   📄 {file}: {count} records ({first['datetime']} → {last['datetime']})")
-    
-    print(f"\n🌡️ CARBON FILES:")
-    for file in sorted(carbon_files):
-        with open(file, 'r') as f:
-            count = sum(1 for line in f if line.strip())
-            total_carbon_records += count
-            
-            # Get time range
-            with open(file, 'r') as f2:
-                lines = [line for line in f2 if line.strip()]
-                if lines:
-                    first = json.loads(lines[0])
-                    last = json.loads(lines[-1])
-                    print(f"   📄 {file}: {count} records ({first['datetime']} → {last['datetime']})")
-    
-    print(f"\n📊 TOTALS:")
-    print(f"   🔋 Power records: {total_power_records}")
-    print(f"   🌡️ Carbon records: {total_carbon_records}")
-    print("=" * 50)
-
-
-def run_step_3_comprehensive():
-    """Run Step 3 with comprehensive data loading"""
-    show_transformed_file_summary()
-    load_all_transformed_data_to_database()
-
-
-def run_step_3_only():
-    """Run only Step 3: Load ALL existing transformed data to database"""
-    run_step_3_comprehensive()
-
-
+# === MAIN PIPELINE ===
 def run_full_pipeline():
-    """Run the complete pipeline: Fetch → Transform → Load (comprehensive)"""
+    """Run the complete pipeline: Fetch → Transform → Load"""
     print("🚀 Starting Full Data Pipeline")
     print("=" * 50)
     
-    """ try:
+    try:
         # Step 1: Fetch raw data
         fetch_and_save_raw_data()
         
         # Step 2: Transform data
         transform_and_save_data()
         
-        # Step 3: Load ALL transformed data (comprehensive)
-        run_step_3_comprehensive()
+        # Step 3: Load to database
+        load_all_transformed_data_to_database()
         
         print("\n🎉 Pipeline completed successfully!")
         print("=" * 50)
@@ -531,4 +268,122 @@ def run_full_pipeline():
     except Exception as e:
         print(f"💥 Pipeline failed: {e}")
         import traceback
-        traceback.print_exc() """
+        traceback.print_exc()
+
+# === INDIVIDUAL STEP FUNCTIONS ===
+def run_step_1_only():
+    """Run only Step 1: Fetch and save raw data"""
+    fetch_and_save_raw_data()
+
+def run_step_2_only():
+    """Run only Step 2: Transform existing raw data"""
+    transform_and_save_data()
+
+def run_step_3_only():
+    """Run only Step 3: Load existing transformed data to database"""
+    load_all_transformed_data_to_database()
+
+# === EXISTING TRANSFORM FUNCTIONS ===
+def transform_power_breakdown(raw_data: list) -> pd.DataFrame:
+    """Transforms raw power breakdown JSON into flat, clean DataFrame."""
+    records = []
+    for entry in raw_data:
+        flat = {
+            "datetime": entry.get("datetime"),
+            "zone": entry.get("zone"),
+            "powerConsumptionTotal": entry.get("powerConsumptionTotal"),
+        }
+
+        # Unpack the power production breakdown
+        breakdown = entry.get("powerProductionBreakdown", {})
+        for k, v in breakdown.items():
+            # Handle None values convert to 0 for calculations
+            flat[f"production_{k}"] = v if v is not None else 0
+
+        # Compute totals with None handling
+        fossil_sources = ["coal", "gas", "oil"]
+        renewable_sources = ["wind", "solar", "hydro", "biomass", "geothermal"]
+
+        # Use 0 if value is None
+        flat["fossil_total"] = sum(
+            breakdown.get(source, 0) or 0 for source in fossil_sources
+        )
+        flat["renewable_total"] = sum(
+            breakdown.get(source, 0) or 0 for source in renewable_sources
+        )
+
+        # Calculate total generation with None handling
+        total_gen = sum(v or 0 for v in breakdown.values())
+        flat["total_generation"] = total_gen
+        
+        # % renewable
+        flat["percent_renewable"] = (
+            round(100 * flat["renewable_total"] / total_gen, 2) if total_gen > 0 else 0
+        )
+        
+        # % fossil
+        flat["percent_fossil"] = (
+            round(100 * flat["fossil_total"] / total_gen, 2) if total_gen > 0 else 0
+        )
+
+        records.append(flat)
+
+    df = pd.DataFrame(records)
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    return df
+
+def transform_carbon_intensity(raw_data: list) -> pd.DataFrame:
+    """Transforms raw carbon intensity JSON into flat, clean DataFrame."""
+    records = []
+    for entry in raw_data:
+        flat = {
+            "datetime": entry.get("datetime"),
+            "zone": entry.get("zone"),
+            "carbonIntensity": entry.get("carbonIntensity"),
+            "updatedAt": entry.get("updatedAt"),
+            "createdAt": entry.get("createdAt"),
+            "emissionFactorType": entry.get("emissionFactorType"),
+            "isEstimated": entry.get("isEstimated"),
+            "estimationMethod": entry.get("estimationMethod"),
+            "temporalGranularity": entry.get("temporalGranularity")
+        }
+        
+        # Add computed fields
+        carbon_intensity = entry.get("carbonIntensity", 0)
+        
+        # Categorize carbon intensity levels
+        if carbon_intensity < 200:
+            flat["carbon_level"] = "Low"
+        elif carbon_intensity < 400:
+            flat["carbon_level"] = "Medium"
+        elif carbon_intensity < 600:
+            flat["carbon_level"] = "High"
+        else:
+            flat["carbon_level"] = "Very High"
+        
+        # Calculate time since update (in hours)
+        if entry.get("updatedAt") and entry.get("datetime"):
+            updated_time = pd.to_datetime(entry["updatedAt"])
+            data_time = pd.to_datetime(entry["datetime"])
+            flat["hours_since_update"] = round((updated_time - data_time).total_seconds() / 3600, 2)
+        else:
+            flat["hours_since_update"] = None
+
+        records.append(flat)
+
+    df = pd.DataFrame(records)
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    df["updatedAt"] = pd.to_datetime(df["updatedAt"])
+    df["createdAt"] = pd.to_datetime(df["createdAt"])
+    return df
+
+
+ 
+if __name__ == "__main__":
+    # Run the full pipeline
+    run_full_pipeline()
+
+
+    # run_step_1_only()  # Just fetch
+    # run_step_2_only()  # Just transform
+    # run_step_3_only()  # Just load to DB
