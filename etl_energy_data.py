@@ -156,6 +156,14 @@ def load_all_transformed_data_to_database():
     
     repo = EnergyDataRepository()
     
+    def safe_parse_datetime(dt_series, column_name="datetime"):
+        """Safely parse datetime with multiple format support"""
+        try:
+            return pd.to_datetime(dt_series, format='ISO8601')
+        except ValueError:
+            print(f"⚠️ Using flexible parsing for {column_name}")
+            return pd.to_datetime(dt_series, format='mixed', errors='coerce')
+    
     try:
         # Find ALL transformed JSONL files
         power_files = glob.glob("transformed/power_breakdown_transformed_*.jsonl")
@@ -186,14 +194,12 @@ def load_all_transformed_data_to_database():
         if all_power_records:
             print(f"\n🔄 Processing {len(all_power_records)} total power records...")
             
-            # Convert to DataFrame 
             power_df = pd.DataFrame(all_power_records)
-            power_df["datetime"] = pd.to_datetime(power_df["datetime"])
+            power_df["datetime"] = safe_parse_datetime(power_df["datetime"], "datetime")
             
             print(f"   📊 Total power records to process: {len(power_df)}")
             print(f"   📅 Time range: {power_df['datetime'].min()} → {power_df['datetime'].max()}")
             
-            # Upsert logic
             repo.save_power_data(power_df)
         
         # === LOAD ALL CARBON DATA ===
@@ -215,24 +221,23 @@ def load_all_transformed_data_to_database():
             print(f"   📊 Loaded {len(file_records)} carbon records")
             all_carbon_records.extend(file_records)
         
-        # Process all carbon data 
+        # Process all carbon data with FIXED datetime parsing
         if all_carbon_records:
             print(f"\n🔄 Processing {len(all_carbon_records)} total carbon records...")
             
-            # Convert to DataFrame - keep ALL records, let database handle duplicates
             carbon_df = pd.DataFrame(all_carbon_records)
-            carbon_df["datetime"] = pd.to_datetime(carbon_df["datetime"])
             
-            # Handle other datetime columns
+            # Use safe datetime parsing for all datetime columns
+            carbon_df["datetime"] = safe_parse_datetime(carbon_df["datetime"], "datetime")
+            
             if "updatedAt" in carbon_df.columns:
-                carbon_df["updatedAt"] = pd.to_datetime(carbon_df["updatedAt"])
+                carbon_df["updatedAt"] = safe_parse_datetime(carbon_df["updatedAt"], "updatedAt")
             if "createdAt" in carbon_df.columns:
-                carbon_df["createdAt"] = pd.to_datetime(carbon_df["createdAt"])
+                carbon_df["createdAt"] = safe_parse_datetime(carbon_df["createdAt"], "createdAt")
             
             print(f"   📊 Total carbon records to process: {len(carbon_df)}")
             print(f"   📅 Time range: {carbon_df['datetime'].min()} → {carbon_df['datetime'].max()}")
             
-            # Upsert logic
             repo.save_carbon_data(carbon_df)
         
         # === SUMMARY ===
@@ -248,7 +253,7 @@ def load_all_transformed_data_to_database():
 
 # === MAIN PIPELINE ===
 def run_full_pipeline():
-    """Run the complete pipeline: Fetch → Transform → Load"""
+    """Run the complete pipeline: Fetch → Transform → Load → Sync"""
     print("🚀 Starting Full Data Pipeline")
     print("=" * 50)
     
@@ -259,8 +264,14 @@ def run_full_pipeline():
         # Step 2: Transform data
         transform_and_save_data()
         
-        # Step 3: Load to database
+        # Step 3: Load to MongoDB
         load_all_transformed_data_to_database()
+        
+        # Step 4: Sync to PostgreSQL for Grafana
+        print("\n🔄 STEP 4: Syncing to PostgreSQL for Grafana")
+        from mongo_to_postgres_sync import MongoToPostgresSync
+        sync = MongoToPostgresSync()
+        sync.run_full_sync()
         
         print("\n🎉 Pipeline completed successfully!")
         print("=" * 50)
