@@ -1,4 +1,5 @@
 import json
+import glob
 from pprint import pprint
 from dotenv import load_dotenv
 import requests
@@ -18,10 +19,243 @@ AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 os.makedirs("raw", exist_ok=True)
 os.makedirs("transformed", exist_ok=True)
 
+# === STEP 1: FETCH AND SAVE RAW DATA ===
+def fetch_and_save_raw_data():
+    """Step 1: Fetch data from API and save raw JSONL files"""
+    print(f"\n🔄 STEP 1: Fetching raw data at {datetime.utcnow().isoformat()}")
+    
+    try:
+        headers = {"auth-token": AUTH_TOKEN}
+        ts = datetime.utcnow().strftime("%Y%m%d")
+        
+        # === POWER BREAKDOWN DATA ===
+        print("📡 Fetching power breakdown data...")
+        power_response = requests.get(POWER_BREAKDOWN_URL, headers=headers)
+        power_response.raise_for_status()
+        power_data = power_response.json()
+        
+        print(f"📊 API returned {len(power_data['history'])} power records")
+        
+        # Save raw power data
+        power_file = f"raw/power_breakdown_raw_{ts}.jsonl"
+        with open(power_file, "w") as f:
+            for item in power_data["history"]:
+                f.write(json.dumps(item) + "\n")
+        print(f"💾 Saved raw power data: {power_file}")
+        
+        # === CARBON INTENSITY DATA ===
+        print("📡 Fetching carbon intensity data...")
+        carbon_response = requests.get(CARBON_HISTORY_URL, headers=headers)
+        carbon_response.raise_for_status()
+        carbon_data = carbon_response.json()
+        
+        # Extract and flatten carbon data
+        zone = carbon_data.get("zone")
+        history = carbon_data.get("history", [])
+        
+        print(f"📊 API returned {len(history)} carbon records for zone {zone}")
+        
+        # Add zone to each record
+        for entry in history:
+            entry["zone"] = zone
+            entry["temporalGranularity"] = carbon_data.get("temporalGranularity")
+        
+        # Save raw carbon data
+        carbon_file = f"raw/carbon_intensity_raw_{ts}.jsonl"
+        with open(carbon_file, "w") as f:
+            for item in history:
+                f.write(json.dumps(item) + "\n")
+        print(f"💾 Saved raw carbon data: {carbon_file}")
+        
+        print("✅ Step 1 completed - Raw data saved")
+        return power_file, carbon_file
+        
+    except Exception as e:
+        print(f"❌ Error in Step 1: {e}")
+        raise
+
+# === STEP 2: TRANSFORM DATA ===
+def transform_and_save_data():
+    """Step 2: Transform all raw files and save to transformed folder"""
+    print(f"\n🔄 STEP 2: Transforming data")
+    
+    # Find all raw files
+    power_raw_files = glob.glob("raw/power_breakdown_raw_*.jsonl")
+    carbon_raw_files = glob.glob("raw/carbon_intensity_raw_*.jsonl")
+    
+    transformed_files = []
+    
+    # Transform power files
+    for raw_file in power_raw_files:
+        print(f"🔄 Transforming power file: {raw_file}")
+        
+        # Load raw data
+        raw_data = []
+        with open(raw_file, "r") as f:
+            for line in f:
+                if line.strip():
+                    raw_data.append(json.loads(line))
+        
+        # Transform
+        power_df = transform_power_breakdown(raw_data)
+        
+        # Save transformed data
+        date_part = raw_file.split("_")[-1].replace(".jsonl", "")
+        transformed_file = f"transformed/power_breakdown_transformed_{date_part}.jsonl"
+        
+        with open(transformed_file, "w") as f:
+            for _, row in power_df.iterrows():
+                # Convert pandas row to dict and handle datetime
+                row_dict = row.to_dict()
+                row_dict["datetime"] = row_dict["datetime"].isoformat()
+                f.write(json.dumps(row_dict) + "\n")
+        
+        print(f"💾 Saved transformed power data: {transformed_file}")
+        transformed_files.append(transformed_file)
+    
+    # Transform carbon files
+    for raw_file in carbon_raw_files:
+        print(f"🔄 Transforming carbon file: {raw_file}")
+        
+        # Load raw data
+        raw_data = []
+        with open(raw_file, "r") as f:
+            for line in f:
+                if line.strip():
+                    raw_data.append(json.loads(line))
+        
+        # Transform
+        carbon_df = transform_carbon_intensity(raw_data)
+        
+        # Save transformed data
+        date_part = raw_file.split("_")[-1].replace(".jsonl", "")
+        transformed_file = f"transformed/carbon_intensity_transformed_{date_part}.jsonl"
+        
+        with open(transformed_file, "w") as f:
+            for _, row in carbon_df.iterrows():
+                # Convert pandas row to dict and handle datetime
+                row_dict = row.to_dict()
+                row_dict["datetime"] = row_dict["datetime"].isoformat()
+                if pd.notna(row_dict.get("updatedAt")):
+                    row_dict["updatedAt"] = row_dict["updatedAt"].isoformat()
+                if pd.notna(row_dict.get("createdAt")):
+                    row_dict["createdAt"] = row_dict["createdAt"].isoformat()
+                f.write(json.dumps(row_dict) + "\n")
+        
+        print(f"💾 Saved transformed carbon data: {transformed_file}")
+        transformed_files.append(transformed_file)
+    
+    print("✅ Step 2 completed - Data transformed")
+    return transformed_files
+
+# === STEP 3: LOAD TO DATABASE ===
+def load_transformed_data_to_database():
+    """Step 3: Load all transformed files to database"""
+    print(f"\n🔄 STEP 3: Loading data to database")
+    
+    repo = EnergyDataRepository()
+    
+    try:
+        # Find all transformed files
+        power_files = glob.glob("transformed/power_breakdown_transformed_*.jsonl")
+        carbon_files = glob.glob("transformed/carbon_intensity_transformed_*.jsonl")
+        
+        total_power_records = 0
+        total_carbon_records = 0
+        
+        # Load power files
+        for transformed_file in power_files:
+            print(f"📥 Loading power file: {transformed_file}")
+            
+            # Load transformed data
+            records = []
+            with open(transformed_file, "r") as f:
+                for line in f:
+                    if line.strip():
+                        records.append(json.loads(line))
+            
+            if records:
+                # Convert to DataFrame for database insertion
+                df = pd.DataFrame(records)
+                df["datetime"] = pd.to_datetime(df["datetime"])
+                
+                print(f"🔄 Processing {len(df)} power records from {transformed_file}")
+                repo.save_power_data(df)
+                total_power_records += len(df)
+        
+        # Load carbon files
+        for transformed_file in carbon_files:
+            print(f"📥 Loading carbon file: {transformed_file}")
+            
+            # Load transformed data
+            records = []
+            with open(transformed_file, "r") as f:
+                for line in f:
+                    if line.strip():
+                        records.append(json.loads(line))
+            
+            if records:
+                # Convert to DataFrame for database insertion
+                df = pd.DataFrame(records)
+                df["datetime"] = pd.to_datetime(df["datetime"])
+                if "updatedAt" in df.columns:
+                    df["updatedAt"] = pd.to_datetime(df["updatedAt"])
+                if "createdAt" in df.columns:
+                    df["createdAt"] = pd.to_datetime(df["createdAt"])
+                
+                print(f"🔄 Processing {len(df)} carbon records from {transformed_file}")
+                repo.save_carbon_data(df)
+                total_carbon_records += len(df)
+        
+        print(f"✅ Step 3 completed - Database loaded")
+        print(f"📊 Total records processed: {total_power_records} power, {total_carbon_records} carbon")
+        
+    except Exception as e:
+        print(f"❌ Error in Step 3: {e}")
+        raise
+    finally:
+        repo.close()
+
+# === MAIN PIPELINE ===
+def run_full_pipeline():
+    """Run the complete pipeline: Fetch → Transform → Load"""
+    print("🚀 Starting Full Data Pipeline")
+    print("=" * 50)
+    
+    try:
+        # Step 1: Fetch raw data
+        fetch_and_save_raw_data()
+        
+        # Step 2: Transform data
+        transform_and_save_data()
+        
+        # Step 3: Load to database
+        load_transformed_data_to_database()
+        
+        print("\n🎉 Pipeline completed successfully!")
+        print("=" * 50)
+        
+    except Exception as e:
+        print(f"💥 Pipeline failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+# === INDIVIDUAL STEP FUNCTIONS ===
+def run_step_1_only():
+    """Run only Step 1: Fetch and save raw data"""
+    fetch_and_save_raw_data()
+
+def run_step_2_only():
+    """Run only Step 2: Transform existing raw data"""
+    transform_and_save_data()
+
+def run_step_3_only():
+    """Run only Step 3: Load existing transformed data to database"""
+    load_transformed_data_to_database()
+
+# === EXISTING TRANSFORM FUNCTIONS ===
 def transform_power_breakdown(raw_data: list) -> pd.DataFrame:
-    """
-    Transforms raw power breakdown JSON into flat, clean DataFrame.
-    """
+    """Transforms raw power breakdown JSON into flat, clean DataFrame."""
     records = []
     for entry in raw_data:
         flat = {
@@ -69,9 +303,7 @@ def transform_power_breakdown(raw_data: list) -> pd.DataFrame:
     return df
 
 def transform_carbon_intensity(raw_data: list) -> pd.DataFrame:
-    """
-    Transforms raw carbon intensity JSON into flat, clean DataFrame.
-    """
+    """Transforms raw carbon intensity JSON into flat, clean DataFrame."""
     records = []
     for entry in raw_data:
         flat = {
@@ -115,156 +347,188 @@ def transform_carbon_intensity(raw_data: list) -> pd.DataFrame:
     df["createdAt"] = pd.to_datetime(df["createdAt"])
     return df
 
-def save_data_to_csv(data, filename):
-    df = pd.DataFrame(data)
-    ts = datetime.utcnow().strftime("%Y%m%d")
-    output_file = f"{filename.rstrip('.csv')}_{ts}.csv"
-    df.to_csv(output_file, sep=";", index=False)
-    print(f"Saved CSV: {output_file}")
-
-def save_data_to_jsonl(data, filename, folder):
-    ts = datetime.utcnow().strftime("%Y%m%d")
-    output_file = f"{folder}/{filename.rstrip('.jsonl')}_{ts}.jsonl"
-    with open(output_file, "w") as f:
-        for item in data:
-            f.write(json.dumps(item) + "\n")
-    print(f"Saved JSONL: {output_file}")
-
-def load_data_from_jsonl(filename):
-    """
-    Load data from .jsonl file (one JSON object per line)
-    """
-    data = []
-    with open(filename, "r") as f:
-        for line in f:
-            line = line.strip()
-            if line:  # Skip empty lines
-                data.append(json.loads(line))
-    return data
-
-def fetch_and_save_data():
-    print(f"\n⏰ Job started at {datetime.utcnow().isoformat()}")
-
-    try:
-        # --- POWER BREAKDOWN ---
-        response = requests.get(POWER_BREAKDOWN_URL, headers={"auth-token": AUTH_TOKEN})
-        response.raise_for_status()
-        power_data = response.json()
-        print(len(power_data))
-        pprint(power_data)
-
-        # This is already a single data point — just wrap in list
-        save_data_to_jsonl(power_data["history"], "power_breakdown_history.jsonl", folder="raw")
-
-        # --- CARBON INTENSITY ---
-        response = requests.get(CARBON_HISTORY_URL, headers={"auth-token": AUTH_TOKEN})
-        response.raise_for_status()
-        carbon_data = response.json()
-        #pprint(carbon_data)
-
-        # Flatten 'history' with metadata
-        zone = carbon_data.get("zone")
-        granularity = carbon_data.get("temporalGranularity")
-        history = carbon_data.get("history", [])
-
-        for entry in history:
-            entry["zone"] = zone
-            entry["temporalGranularity"] = granularity
-
-        save_data_to_jsonl(history, "carbon_intensity_history.jsonl", folder="raw")
-
-    except requests.exceptions.RequestException as e:
-        print(f"API request failed: {e}")
-    except Exception as ex:
-        print(f"Unexpected error: {ex}")
-
-def fetch_transform_and_store_data():
-    """Fetch, transform, and store data in MongoDB"""
-    print(f"\n⏰ Job started at {datetime.utcnow().isoformat()}")
+# === MAIN EXECUTION ===
+if __name__ == "__main__":
+    # Run the full pipeline
+    run_full_pipeline()
     
-    # Initialize database repository
+    
+    # run_step_1_only()  # Just fetch
+    # run_step_2_only()  # Just transform
+    # run_step_3_only()  # Just load to DB
+
+def load_all_transformed_data_to_database():
+    """Step 3: Load ALL transformed JSONL files to database (comprehensive approach)"""
+    print(f"\n🔄 STEP 3: Loading ALL transformed data to database")
+    print("=" * 60)
+    
     repo = EnergyDataRepository()
     
     try:
-        # --- POWER BREAKDOWN ---
-        response = requests.get(POWER_BREAKDOWN_URL, headers={"auth-token": AUTH_TOKEN})
-        response.raise_for_status()
-        power_data = response.json()
+        # Find ALL transformed JSONL files
+        power_files = glob.glob("transformed/power_breakdown_transformed_*.jsonl")
+        carbon_files = glob.glob("transformed/carbon_intensity_transformed_*.jsonl")
         
-        # Save raw data
-        save_data_to_jsonl(power_data["history"], "power_breakdown_history.jsonl", folder="raw")
+        print(f"📁 Found {len(power_files)} power files and {len(carbon_files)} carbon files")
         
-        # Transform and store in MongoDB
-        power_df = transform_power_breakdown(power_data["history"])
-        repo.save_power_data(power_df)
+        # === LOAD ALL POWER DATA ===
+        all_power_records = []
         
-        # --- CARBON INTENSITY ---
-        response = requests.get(CARBON_HISTORY_URL, headers={"auth-token": AUTH_TOKEN})
-        response.raise_for_status()
-        carbon_data = response.json()
+        for transformed_file in sorted(power_files):
+            print(f"📥 Reading power file: {transformed_file}")
+            
+            file_records = []
+            with open(transformed_file, "r") as f:
+                for line_num, line in enumerate(f, 1):
+                    if line.strip():
+                        try:
+                            record = json.loads(line)
+                            file_records.append(record)
+                        except json.JSONDecodeError as e:
+                            print(f"⚠️ Skipping invalid JSON on line {line_num}: {e}")
+            
+            print(f"   📊 Loaded {len(file_records)} power records")
+            all_power_records.extend(file_records)
         
-        # Flatten and save raw data
-        zone = carbon_data.get("zone")
-        granularity = carbon_data.get("temporalGranularity")
-        history = carbon_data.get("history", [])
+        # Process all power data
+        if all_power_records:
+            print(f"\n🔄 Processing {len(all_power_records)} total power records...")
+            
+            # Convert to DataFrame 
+            power_df = pd.DataFrame(all_power_records)
+            power_df["datetime"] = pd.to_datetime(power_df["datetime"])
+            
+            print(f"   📊 Total power records to process: {len(power_df)}")
+            print(f"   📅 Time range: {power_df['datetime'].min()} → {power_df['datetime'].max()}")
+            
+            # Upsert logic
+            repo.save_power_data(power_df)
         
-        for entry in history:
-            entry["zone"] = zone
-            entry["temporalGranularity"] = granularity
+        # === LOAD ALL CARBON DATA ===
+        all_carbon_records = []
         
-        save_data_to_jsonl(history, "carbon_intensity_history.jsonl", folder="raw")
+        for transformed_file in sorted(carbon_files):
+            print(f"\n📥 Reading carbon file: {transformed_file}")
+            
+            file_records = []
+            with open(transformed_file, "r") as f:
+                for line_num, line in enumerate(f, 1):
+                    if line.strip():
+                        try:
+                            record = json.loads(line)
+                            file_records.append(record)
+                        except json.JSONDecodeError as e:
+                            print(f"⚠️ Skipping invalid JSON on line {line_num}: {e}")
+            
+            print(f"   📊 Loaded {len(file_records)} carbon records")
+            all_carbon_records.extend(file_records)
         
-        # Transform and store in MongoDB
-        carbon_df = transform_carbon_intensity(history)
-        repo.save_carbon_data(carbon_df)
+        # Process all carbon data 
+        if all_carbon_records:
+            print(f"\n🔄 Processing {len(all_carbon_records)} total carbon records...")
+            
+            # Convert to DataFrame - keep ALL records, let database handle duplicates
+            carbon_df = pd.DataFrame(all_carbon_records)
+            carbon_df["datetime"] = pd.to_datetime(carbon_df["datetime"])
+            
+            # Handle other datetime columns
+            if "updatedAt" in carbon_df.columns:
+                carbon_df["updatedAt"] = pd.to_datetime(carbon_df["updatedAt"])
+            if "createdAt" in carbon_df.columns:
+                carbon_df["createdAt"] = pd.to_datetime(carbon_df["createdAt"])
+            
+            print(f"   📊 Total carbon records to process: {len(carbon_df)}")
+            print(f"   📅 Time range: {carbon_df['datetime'].min()} → {carbon_df['datetime'].max()}")
+            
+            # Upsert logic
+            repo.save_carbon_data(carbon_df)
         
-        print("✅ Data successfully stored in MongoDB")
+        # === SUMMARY ===
+        print(f"\n✅ ALL transformed data loaded successfully!")
+        print("=" * 60)
         
     except Exception as e:
-        print(f"❌ Error in data processing: {e}")
+        print(f"❌ Error loading transformed data: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         repo.close()
 
-def start_schedule():
-    scheduler = BlockingScheduler()
-    scheduler.add_job(fetch_and_save_data, trigger="interval", hours=1)
-    print("📅 Scheduler started: job will run every hour.")
-    scheduler.start()
-
-if __name__ == "__main__":
-
-
-    fetch_transform_and_store_data()
-
-    """ # Test both transformations
-    #fetch_and_save_data()
+def show_transformed_file_summary():
+    """Show summary of all transformed files"""
+    print("📋 TRANSFORMED FILES SUMMARY")
+    print("=" * 50)
     
-    # Load and transform carbon data
-    print("=== CARBON INTENSITY DATA ===")
-    carbon_data = load_data_from_jsonl("carbon_intensity_history_20250822.jsonl")
-    print(f"Loaded {len(carbon_data)} carbon records")
+    power_files = glob.glob("transformed/power_breakdown_transformed_*.jsonl")
+    carbon_files = glob.glob("transformed/carbon_intensity_transformed_*.jsonl")
     
-    carbon_df = transform_carbon_intensity(carbon_data)
-    print("Carbon DataFrame:")
-    print(carbon_df.head())
-    print(f"\nCarbon columns: {carbon_df.columns.tolist()}")
+    total_power_records = 0
+    total_carbon_records = 0
     
-    # Save to CSV
-    save_data_to_csv(carbon_df, "carbon_intensity_transformed.csv", folder="transformed")
+    print("🔋 POWER FILES:")
+    for file in sorted(power_files):
+        with open(file, 'r') as f:
+            count = sum(1 for line in f if line.strip())
+            total_power_records += count
+            
+            # Get time range
+            with open(file, 'r') as f2:
+                lines = [line for line in f2 if line.strip()]
+                if lines:
+                    first = json.loads(lines[0])
+                    last = json.loads(lines[-1])
+                    print(f"   📄 {file}: {count} records ({first['datetime']} → {last['datetime']})")
+    
+    print(f"\n🌡️ CARBON FILES:")
+    for file in sorted(carbon_files):
+        with open(file, 'r') as f:
+            count = sum(1 for line in f if line.strip())
+            total_carbon_records += count
+            
+            # Get time range
+            with open(file, 'r') as f2:
+                lines = [line for line in f2 if line.strip()]
+                if lines:
+                    first = json.loads(lines[0])
+                    last = json.loads(lines[-1])
+                    print(f"   📄 {file}: {count} records ({first['datetime']} → {last['datetime']})")
+    
+    print(f"\n📊 TOTALS:")
+    print(f"   🔋 Power records: {total_power_records}")
+    print(f"   🌡️ Carbon records: {total_carbon_records}")
+    print("=" * 50)
 
-    # Load and transform power data (if you have it)
-    print("\n=== POWER BREAKDOWN DATA ===")
-    try:
-        power_data = load_data_from_jsonl("power_breakdown_history_20250822.jsonl")
-        print(f"Loaded {len(power_data)} power records")
+
+def run_step_3_comprehensive():
+    """Run Step 3 with comprehensive data loading"""
+    show_transformed_file_summary()
+    load_all_transformed_data_to_database()
+
+
+def run_step_3_only():
+    """Run only Step 3: Load ALL existing transformed data to database"""
+    run_step_3_comprehensive()
+
+
+def run_full_pipeline():
+    """Run the complete pipeline: Fetch → Transform → Load (comprehensive)"""
+    print("🚀 Starting Full Data Pipeline")
+    print("=" * 50)
+    
+    """ try:
+        # Step 1: Fetch raw data
+        fetch_and_save_raw_data()
         
-        power_df = transform_power_breakdown(power_data)
-        print("Power DataFrame:")
-        print(power_df.head())
-        print(f"\nPower columns: {power_df.columns.tolist()}")
+        # Step 2: Transform data
+        transform_and_save_data()
         
-        # Save to CSV
-        save_data_to_csv(power_df, "power_breakdown_transformed.csv", folder="transformed")
-
-    except FileNotFoundError:
-        print("Power breakdown file not found - skipping") """
+        # Step 3: Load ALL transformed data (comprehensive)
+        run_step_3_comprehensive()
+        
+        print("\n🎉 Pipeline completed successfully!")
+        print("=" * 50)
+        
+    except Exception as e:
+        print(f"💥 Pipeline failed: {e}")
+        import traceback
+        traceback.print_exc() """
