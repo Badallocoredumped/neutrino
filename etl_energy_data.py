@@ -269,7 +269,7 @@ def run_full_pipeline():
         
         # Step 4: Sync to PostgreSQL for Grafana
         print("\n🔄 STEP 4: Syncing to PostgreSQL for Grafana")
-        from mongo_to_postgres_sync import MongoToPostgresSync
+        from database.mongo_to_postgres_sync import MongoToPostgresSync
         sync = MongoToPostgresSync()
         sync.run_full_sync()
         

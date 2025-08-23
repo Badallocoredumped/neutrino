@@ -17,11 +17,11 @@ class MongoToPostgresSync:
         
         # PostgreSQL connection
         self.pg_conn = psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "localhost"),
-            database=os.getenv("POSTGRES_DB", "grafana_energy"),
-            user=os.getenv("POSTGRES_USER", "postgres"),
-            password=os.getenv("POSTGRES_PASSWORD", "password"),
-            port=os.getenv("POSTGRES_PORT", "5432")
+            host=os.getenv("POSTGRES_HOST"),
+            database=os.getenv("POSTGRES_DB"),
+            user=os.getenv("POSTGRES_USER"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+            port=os.getenv("POSTGRES_PORT")
         )
         
         self.setup_postgres_tables()

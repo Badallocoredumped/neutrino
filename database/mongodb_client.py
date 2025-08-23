@@ -8,8 +8,8 @@ load_dotenv()
 
 class MongoDBClient:
     def __init__(self):
-        self.connection_string = os.getenv("MONGODB_CONNECTION_STRING", "mongodb://localhost:27017/")
-        self.database_name = os.getenv("MONGODB_DATABASE", "neutrino_energy")
+        self.connection_string = os.getenv("MONGODB_CONNECTION_STRING")
+        self.database_name = os.getenv("MONGODB_DATABASE")
         self.client = None
         self.db = None
     
