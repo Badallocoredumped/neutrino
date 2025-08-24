@@ -5,6 +5,7 @@ data/logs/*.log
 raw/*.jsonl
 transformed/*.jsonl
 logs/*.log
+neutrino_energy.*.json
 
 # Keep sample files 
 !data/raw/sample_*.jsonl
