@@ -7,6 +7,13 @@ transformed/*.jsonl
 logs/*.log
 neutrino_energy.*.json
 
+# Ignore the file with real values
+docker-compose.yml
+
+# Keep the secure template
+!docker-compose.template.yml
+
+
 # Keep sample files 
 !data/raw/sample_*.jsonl
 !data/transformed/sample_*.jsonl
