@@ -10,7 +10,7 @@ def verify_postgres_data():
     try:
         conn = psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "localhost"),
-            database=os.getenv("POSTGRES_DB", "grafana_energy"),
+            database=os.getenv("POSTGRES_DB", "neutrino_energy"),
             user=os.getenv("POSTGRES_USER", "postgres"),
             password=os.getenv("POSTGRES_PASSWORD", "password"),
             port=os.getenv("POSTGRES_PORT", "5432")

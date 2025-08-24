@@ -1,0 +1,38 @@
+# ===================================================================
+# Neutrino Energy Pipeline - Python Dependencies
+# ===================================================================
+
+# Core Python Libraries
+requests>=2.31.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Database Drivers
+pymongo>=4.5.0
+psycopg2-binary>=2.9.7
+
+# Data Processing
+python-dateutil>=2.8.2
+pytz>=2023.3
+
+# Logging and Configuration
+python-dotenv>=1.0.0
+
+# Scheduling and Background Tasks
+schedule>=1.2.0
+
+# Time and Date Handling
+iso8601>=2.0.0
+
+# HTTP Client Enhancements
+urllib3>=2.0.4
+certifi>=2023.7.22
+
+# JSON Processing
+orjson>=3.9.5
+
+# Error Handling and Retries
+tenacity>=8.2.3
+
+# Timezone Handling
+tzdata>=2023.3

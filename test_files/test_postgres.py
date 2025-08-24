@@ -10,7 +10,7 @@ def test_postgres_connection():
         # First try to connect to the specific database
         conn = psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "localhost"),
-            database=os.getenv("POSTGRES_DB", "grafana_energy"),
+            database=os.getenv("POSTGRES_DB", "neutrino_energy"),
             user=os.getenv("POSTGRES_USER", "postgres"),
             password=os.getenv("POSTGRES_PASSWORD", "password"),
             port=os.getenv("POSTGRES_PORT", "5432")
@@ -28,7 +28,7 @@ def test_postgres_connection():
         
     except psycopg2.OperationalError as e:
         if "does not exist" in str(e):
-            print(f"⚠️ Database 'grafana_energy' does not exist. Creating it...")
+            print(f"⚠️ Database 'neutrino_energy' does not exist. Creating it...")
             try:
                 # Connect to default postgres database to create our database
                 conn = psycopg2.connect(
@@ -41,8 +41,8 @@ def test_postgres_connection():
                 conn.autocommit = True
                 
                 with conn.cursor() as cursor:
-                    cursor.execute("CREATE DATABASE grafana_energy;")
-                    print("✅ Database 'grafana_energy' created successfully!")
+                    cursor.execute("CREATE DATABASE neutrino_energy;")
+                    print("✅ Database 'neutrino_energy' created successfully!")
                 
                 conn.close()
                 return True

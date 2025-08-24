@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import pymongo
 import psycopg2
+import urllib.parse
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -11,15 +12,31 @@ class MongoToPostgresSync:
     def __init__(self):
         load_dotenv()
         
-        # MongoDB connection
-        self.mongo_client = pymongo.MongoClient("mongodb://localhost:27017/")
-        self.mongo_db = self.mongo_client["neutrino_energy"]
+        # MongoDB connection - use environment variables for Docker compatibility
+        mongo_host = os.getenv("MONGO_HOST")
+        mongo_port = os.getenv("MONGO_PORT")
+        mongo_username = os.getenv("MONGO_USERNAME")
+        mongo_password = os.getenv("MONGO_PASSWORD")
+        mongo_database = os.getenv("MONGO_DATABASE")
+        
+        # Build MongoDB connection string with URL encoding for special characters
+        if mongo_username and mongo_password:
+            # URL encode the username and password to handle special characters (if any)
+            encoded_username = urllib.parse.quote_plus(mongo_username)
+            encoded_password = urllib.parse.quote_plus(mongo_password)
+            mongo_url = f"mongodb://{encoded_username}:{encoded_password}@{mongo_host}:{mongo_port}/?authSource=admin"
+        else:
+            mongo_url = f"mongodb://{mongo_host}:{mongo_port}/"
+            
+        print(f"Connecting to MongoDB: {mongo_url.replace(encoded_password, '***') if mongo_username else mongo_url}")
+        self.mongo_client = pymongo.MongoClient(mongo_url)
+        self.mongo_db = self.mongo_client[mongo_database]
         
         # PostgreSQL connection
         self.pg_conn = psycopg2.connect(
             host=os.getenv("POSTGRES_HOST"),
-            database=os.getenv("POSTGRES_DB"),
-            user=os.getenv("POSTGRES_USER"),
+            database=os.getenv("POSTGRES_DATABASE") or os.getenv("POSTGRES_DB"),
+            user=os.getenv("POSTGRES_USERNAME") or os.getenv("POSTGRES_USER"),
             password=os.getenv("POSTGRES_PASSWORD"),
             port=os.getenv("POSTGRES_PORT")
         )

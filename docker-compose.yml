@@ -1,0 +1,213 @@
+version: '3.8'
+
+services:
+  # MongoDB Database - Primary data storage
+  mongodb:
+    image: mongo:6.0
+    container_name: neutrino_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./docker-init/mongodb:/docker-entrypoint-initdb.d
+    environment:
+      MONGO_INITDB_DATABASE: neutrino_energy
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: mongopass123
+    networks:
+      - neutrino_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/neutrino_energy --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database - Analytics/Grafana storage
+  postgres:
+    image: postgres:15
+    container_name: neutrino_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker-init/postgres:/docker-entrypoint-initdb.d
+    environment:
+      POSTGRES_DB: neutrino_energy
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespass123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    networks:
+      - neutrino_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d neutrino_energy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Energy Data Pipeline - Main application
+  energy_pipeline:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: neutrino_pipeline
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./raw:/app/raw
+      - ./transformed:/app/transformed
+      - ./logs:/app/logs
+      - pipeline_data:/app/data
+    environment:
+      # API Configuration
+      - POWER_BREAKDOWN_HISTORY_URL=https://api.electricitymaps.com/v3/power-breakdown/history?zone=TR
+      - CARBON_HISTORY_URL=https://api.electricitymaps.com/v3/carbon-intensity/history?zone=TR
+      - AUTH_TOKEN=vSuvCjN1gxWqJdnnUxur
+      - ELECTRICITY_MAPS_TOKEN=vSuvCjN1gxWqJdnnUxur
+      
+      # MongoDB Configuration (Docker hostnames)
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USERNAME=admin
+      - MONGO_PASSWORD=mongopass123
+      - MONGO_DATABASE=neutrino_energy
+      - MONGODB_CONNECTION_STRING=mongodb://admin:mongopass123@mongodb:27017/?authSource=admin
+      - MONGODB_DATABASE=neutrino_energy
+      
+      # PostgreSQL Configuration (Docker hostnames)
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=neutrino_energy
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=postgrespass123
+      - POSTGRES_DB=neutrino_energy
+      - POSTGRES_USER=postgres
+      
+      # Application Configuration
+      - RAW_DATA_DIR=raw
+      - TRANSFORMED_DATA_DIR=transformed
+      - LOG_LEVEL=INFO
+      - LOG_DIR=logs
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    networks:
+      - neutrino_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pymongo; pymongo.MongoClient('mongodb://admin:mongopass123@mongodb:27017/').admin.command('ping')"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+
+  # Grafana - Data visualization and dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: neutrino_grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      # Grafana Configuration
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafanapass123
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      
+      # Database Configuration
+      - GF_DATABASE_TYPE=postgres
+      - GF_DATABASE_HOST=postgres:5432
+      - GF_DATABASE_NAME=neutrino_energy
+      - GF_DATABASE_USER=postgres
+      - GF_DATABASE_PASSWORD=postgrespass123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - neutrino_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # MongoDB Express - Database administration (optional)
+  mongo_express:
+    image: mongo-express:latest
+    container_name: neutrino_mongo_express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: mongopass123
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: adminpass123
+      ME_CONFIG_MONGODB_URL: mongodb://admin:mongopass123@mongodb:27017/
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - neutrino_network
+    profiles:
+      - admin  # Only start with: docker-compose --profile admin up
+
+  # pgAdmin - PostgreSQL administration (optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: neutrino_pgadmin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@neutrino.com
+      PGADMIN_DEFAULT_PASSWORD: pgadminpass123
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - neutrino_network
+    profiles:
+      - admin  # Only start with: docker-compose --profile admin up
+
+# Persistent data volumes
+volumes:
+  mongodb_data:
+    driver: local
+    name: neutrino_mongodb_data
+  postgres_data:
+    driver: local
+    name: neutrino_postgres_data
+  grafana_data:
+    driver: local
+    name: neutrino_grafana_data
+  pgadmin_data:
+    driver: local
+    name: neutrino_pgadmin_data
+  pipeline_data:
+    driver: local
+    name: neutrino_pipeline_data
+
+# Custom network for service communication
+networks:
+  neutrino_network:
+    driver: bridge
+    name: neutrino_energy_network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
