@@ -134,6 +134,28 @@ Neutrino provides **Grafana-powered dashboards**:
 - Real-time consumption & generation insights  
 - Grid efficiency monitoring  
 
+## 🛠️ Technology Stack
+
+### Core Technologies
+- **Python 3.11** - Modern Python runtime with enhanced performance
+- **MongoDB 6.0** - Document database for flexible data storage
+- **PostgreSQL 15** - Relational database for structured data
+
+### Data Processing & Automation
+- **pandas** - Data manipulation and analysis
+- **requests** - HTTP library for API interactions
+- **schedule** - Job scheduling and automation
+
+### Monitoring & Observability
+- **Grafana** - Data visualization and monitoring dashboards
+- **Python logging** - Application logging framework
+- **traceback** - Error tracking and debugging
+
+### DevOps & Deployment
+- **Docker** - Containerization platform
+- **Docker Compose** - Multi-container orchestration
+---
+
 ## Grafana Dashboards
 
 <p align="center">
