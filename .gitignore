@@ -1,3 +1,15 @@
+# Data files 
+data/raw/*.jsonl
+data/transformed/*.jsonl
+data/logs/*.log
+raw/*.jsonl
+transformed/*.jsonl
+logs/*.log
+
+# Keep sample files 
+!data/raw/sample_*.jsonl
+!data/transformed/sample_*.jsonl
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -5,6 +17,8 @@ __pycache__/
 
 # C extensions
 *.so
+
+
 
 # Distribution / packaging
 .Python
