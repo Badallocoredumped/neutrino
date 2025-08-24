@@ -128,8 +128,13 @@ Neutrino provides **Grafana-powered dashboards**:
 
 ## Grafana Dashboards
 
-![Grid Performance](docs/Grafana1.png)
-![Carbon Intensity Trends](docs/Grafana2.png)
+<p align="center">
+  <img src="/docs/Grafana1.png" width="900">
+</p>
+<p align="center">
+  <img src="/docs/Grafana2.png" width="900">
+</p>
+
 
 
 
