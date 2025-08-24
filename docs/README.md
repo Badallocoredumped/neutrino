@@ -9,6 +9,11 @@ It ingests live energy data from the [Electricity Maps API](https://www.electric
 
 ```mermaid
 flowchart TB
+    subgraph AUTOMATION["🤖 Automation Layer"]
+        SCHEDULER[🐍 Python Schedule<br/><br/>• schedule.every hour.do<br/>• Background thread execution<br/>• Error handling & retry<br/>• Continuous monitoring]
+        style SCHEDULER fill:#fff3e0,stroke:#f57c00,stroke-width:3px,color:#f57c00
+    end
+
     subgraph INPUT["🌐 Data Sources"]
         direction TB
         EM[🔌 Electricity Maps API<br/><br/>⚡ Real-time Power Data<br/>🌱 Carbon Intensity Data<br/>🌍 Regional Grid Mix]
@@ -35,7 +40,7 @@ flowchart TB
     subgraph STORAGE["💾 Storage Layer"]
         direction LR
         OPERATIONAL[🍃 MongoDB<br/><br/>• Document-based storage<br/>• Operational queries<br/>• Real-time access<br/>• Flexible schema]
-        ANALYTICAL[🐘 PostgreSQL<br/><br/>• Time-series tables<br/>• Complex analytics<br/>• ACID compliance<br/>• Structured queries]
+        ANALYTICAL[🐘 PostgreSQL<br/><br/>• Time-series tables<br/>• Analytics<br/>• ACID compliance<br/>• Structured queries]
         
         OPERATIONAL -.->|"📊 Data Sync<br/>ETL Process"| ANALYTICAL
         
@@ -46,11 +51,13 @@ flowchart TB
     subgraph OUTPUT["📊 Output Layer"]
         direction TB
         DASH[📈 Grafana Dashboards<br/><br/>• Energy mix visualizations<br/>• Carbon trend analysis<br/>• Real-time monitoring<br/>• Custom KPI panels]
-        REPORTS[📄 Automated Reporting<br/><br/>• Daily energy summaries<br/>• Weekly trend analysis<br/>• Monthly insights<br/>• Alert notifications]
         
         style DASH fill:#fff8e1,stroke:#f57f17,stroke-width:3px,color:#f57f17
-        style REPORTS fill:#f1f8e9,stroke:#558b2f,stroke-width:3px,color:#558b2f
     end
+    
+    %% Automation connections
+    SCHEDULER ==>|"🕐 Schedule every hour"| FETCH
+    SCHEDULER -.->|"🐍 Python orchestration"| PROCESSING
     
     %% Main flow connections
     EM ==>|"🔄 REST Calls<br/>JSON Responses"| FETCH
@@ -58,23 +65,24 @@ flowchart TB
     
     %% Output connections
     ANALYTICAL ==>|"📊 SQL Queries"| DASH
-    ANALYTICAL ==>|"📈 Time Series"| REPORTS
     
     %% Styling for subgraphs
+    style AUTOMATION fill:#fef7e0,stroke:#f57c00,stroke-width:4px,color:#ef6c00
     style INPUT fill:#e8eaf6,stroke:#3f51b5,stroke-width:4px,color:#1a237e
     style PROCESSING fill:#f3e5f5,stroke:#7b1fa2,stroke-width:4px,color:#4a148c
     style STORAGE fill:#e0f2f1,stroke:#00695c,stroke-width:4px,color:#004d40
     style OUTPUT fill:#fff3e0,stroke:#ef6c00,stroke-width:4px,color:#e65100
 
     %% Custom connection styling
-    linkStyle 0 stroke:#1976d2,stroke-width:4px
-    linkStyle 1 stroke:#7b1fa2,stroke-width:3px
-    linkStyle 2 stroke:#388e3c,stroke-width:3px
-    linkStyle 3 stroke:#f57c00,stroke-width:3px
-    linkStyle 4 stroke:#5e35b1,stroke-width:3px
-    linkStyle 5 stroke:#d32f2f,stroke-width:2px
-    linkStyle 6 stroke:#1976d2,stroke-width:3px
-    linkStyle 7 stroke:#388e3c,stroke-width:3px
+    linkStyle 0 stroke:#f57c00,stroke-width:4px
+    linkStyle 1 stroke:#f57c00,stroke-width:2px,stroke-dasharray: 5 5
+    linkStyle 2 stroke:#1976d2,stroke-width:4px
+    linkStyle 3 stroke:#7b1fa2,stroke-width:3px
+    linkStyle 4 stroke:#388e3c,stroke-width:3px
+    linkStyle 5 stroke:#f57c00,stroke-width:3px
+    linkStyle 6 stroke:#5e35b1,stroke-width:3px
+    linkStyle 7 stroke:#d32f2f,stroke-width:2px
+    linkStyle 8 stroke:#1976d2,stroke-width:3px
 ```
 
 
