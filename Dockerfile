@@ -1,4 +1,4 @@
-# Use Python 3.11 slim image for smaller size
+# Dockerfile
 FROM python:3.11-slim
 
 # Set metadata
@@ -23,28 +23,24 @@ RUN apt-get update && apt-get install -y \
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Copy requirements first for better Docker layer caching
-COPY requirements.txt .
+COPY config/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy application code to the right location
+COPY src/ ./src/
 
 # Create necessary directories with proper permissions
 RUN mkdir -p raw transformed logs data && \
     chown -R appuser:appuser /app
 
-# Copy and make wait script executable
-COPY docker-scripts/wait-for-it.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/wait-for-it.sh
-
-# Make Python scripts executable
-RUN chmod +x scheduler.py etl_energy_data.py
+# Make Python scripts executable (update paths to src/)
+RUN chmod +x src/scheduler.py src/etl_energy_data.py
 
 # Set environment variables
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/src
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
@@ -56,9 +52,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=60s --timeout=15s --start-period=60s --retries=3 \
-    CMD python -c "import requests; import sys; sys.exit(0)" || exit 1
+    CMD python -c "import sys; sys.exit(0)" || exit 1
 
-# Default command - wait for dependencies then start scheduler
-CMD ["wait-for-it.sh", "mongodb:27017", "--timeout=60", "--", \
-     "wait-for-it.sh", "postgres:5432", "--timeout=60", "--", \
-     "python", "scheduler.py"]
+# Default command - start scheduler from src/ directory
+CMD ["python", "src/scheduler.py"]

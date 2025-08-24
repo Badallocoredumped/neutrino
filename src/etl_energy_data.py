@@ -7,7 +7,7 @@ import os
 import pandas as pd
 from datetime import datetime
 
-from database.energy_data_repository import EnergyDataRepository
+from src.database.energy_data_repository import EnergyDataRepository
 
 
 load_dotenv(dotenv_path=".env", override=True)
@@ -269,7 +269,7 @@ def run_full_pipeline():
         
         # Step 4: Sync to PostgreSQL for Grafana
         print("\n🔄 STEP 4: Syncing to PostgreSQL for Grafana")
-        from database.mongo_to_postgres_sync import MongoToPostgresSync
+        from src.database.mongo_to_postgres_sync import MongoToPostgresSync
         sync = MongoToPostgresSync()
         sync.run_full_sync()
         
