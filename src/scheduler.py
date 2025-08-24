@@ -3,15 +3,26 @@ import time
 import logging
 from datetime import datetime
 import traceback
-from etl_energy_data import run_full_pipeline
+from src.etl_energy_data import run_full_pipeline
+import os
 
 def setup_logging():
     """Setup logging for the scheduler"""
+    # Use the environment variable, fallback to /app/logs for Docker
+    log_dir = os.getenv('LOG_DIR', '/app/logs')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Create log file path
+    log_file = os.path.join(log_dir, 'energy_pipeline_scheduler.log')
+    
+    print(f"📁 Setting up logging in: {log_dir}")
+    print(f"📄 Log file: {log_file}")
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('energy_pipeline_scheduler.log'),
+            logging.FileHandler(log_file),
             logging.StreamHandler()
         ]
     )
