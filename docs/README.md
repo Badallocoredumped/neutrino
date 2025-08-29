@@ -16,7 +16,7 @@ flowchart TB
 
     subgraph INPUT["🌐 Data Sources"]
         direction TB
-        EM[🔌 Electricity Maps API<br/><br/>⚡ Real-time Power Data<br/>🌱 Carbon Intensity Data<br/>🌍 Regional Grid Mix]
+        EM[🔌 Electricity Maps API<br/><br/>⚡ Real-time Power Data<br/>🌱 Carbon Intensity Data<br/>]
         style EM fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#01579b
     end
     
