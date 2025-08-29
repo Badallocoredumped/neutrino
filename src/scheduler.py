@@ -57,34 +57,53 @@ def run_pipeline_job():
         logger.error(f"📋 Full traceback:\n{traceback.format_exc()}")
 
 def run_epias_current_hour():
-    """Collect today's EPİAŞ consumption data (all hours for the day)"""
+    """Collect EPİAŞ consumption data accounting for 2-hour API delay"""
     logger = logging.getLogger(__name__)
-    
     try:
-        logger.info("🕐 Starting EPİAŞ daily data collection (all hours for today)")
-        
+        logger.info("🕐 Starting EPİAŞ hourly data collection (2 hours behind)")
         collector = EPIASConsumptionCollector()
-        today = datetime.now().strftime("%Y-%m-%d")
-        start_date = f"{today}T00:00:00+03:00"
-        end_date = f"{today}T23:00:00+03:00"
+        now = datetime.now()
         
-        print(f"🔄 Collecting EPİAŞ data for: {start_date} to {end_date}")
+        # Get the latest available data point (2 hours behind)
+        latest_available_hour = now - timedelta(hours=2)
+        
+        # For LSTM prediction, we need 24 hours of data
+        # So collect from 26 hours ago to 2 hours ago (24 hour window)
+        start_time = latest_available_hour - timedelta(hours=23)  # 23 hours back + current = 24 hours
+        end_time = latest_available_hour
+        
+        # Set precise time boundaries
+        start_date = start_time.replace(minute=0, second=0, microsecond=0)
+        end_date = end_time.replace(minute=59, second=59, microsecond=999999)
+        
+        start_date_str = start_date.strftime("%Y-%m-%dT%H:00:00Z")
+        end_date_str = end_date.strftime("%Y-%m-%dT%H:00:00Z")
+        
+        print(f"🔄 Collecting EPİAŞ data for 24-hour window: {start_date_str} to {end_date_str}")
+        print(f"📊 This gives us 24 hours of data to predict hour: {(latest_available_hour + timedelta(hours=1)).strftime('%H:00')}")
         
         df = collector.collect_and_save_consumption_data(
-            start_date=start_date,
-            end_date=end_date,
+            start_date=start_date_str,
+            end_date=end_date_str,
             save_to_csv=False,
             save_to_db=True
         )
         
         if not df.empty:
-            print(f"✅ Collected {len(df)} records for {today}")
-            logger.info(f"✅ EPİAŞ daily data collected: {len(df)} records for {today}")
+            print(f"✅ Collected {len(df)} records for 24-hour prediction window")
+            logger.info(f"✅ EPİAŞ 24-hour data collected: {len(df)} records")
+            
+            # Validate we have exactly 24 hours of data
+            if len(df) == 24:
+                print(f"📈 Ready for LSTM prediction of hour: {(latest_available_hour + timedelta(hours=1)).strftime('%Y-%m-%d %H:00')}")
+            else:
+                logger.warning(f"⚠️ Expected 24 records, got {len(df)}. Check for missing data.")
+                
         else:
-            logger.warning(f"⚠️ No EPİAŞ data collected for {today}")
-        
+            logger.warning(f"⚠️ No EPİAŞ data collected for the 24-hour window")
+            
     except Exception as e:
-        logger.error(f"❌ EPİAŞ daily data collection failed: {e}")
+        logger.error(f"❌ EPİAŞ 24-hour data collection failed: {e}")
         logger.error(f"📋 Full traceback:\n{traceback.format_exc()}")
 
 def run_epias_daily_pipeline():
@@ -128,7 +147,7 @@ def main():
     schedule.every().hour.at(":05").do(run_pipeline_job)
     
     # Schedule EPİAŞ jobs
-    schedule.every().day.at("02:00").do(run_epias_daily_pipeline)  # Daily complete pipeline
+    #schedule.every().day.at("02:00").do(run_epias_daily_pipeline)  # Daily complete pipeline
     schedule.every().hour.at(":10").do(run_epias_current_hour)    # Hourly updates
     
     # Optional: Run immediately on startup for testing
