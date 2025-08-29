@@ -8,9 +8,12 @@ import pandas as pd
 load_dotenv(dotenv_path=".env", override=True)
 
 
+
+
+
 # Config
 CAS_URL = "https://giris.epias.com.tr/cas/v1/tickets"
-REALTIME_GEN_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/generation/data/realtime-generation",
+REALTIME_GEN_URL = "https://seffaflik.epias.com.tr/electricity-service/technical/tr/index.html#_realtime-consumption",
 TGT = "TGT-9461130-NU4vmKb6tJhEMOEVYir-0GPlUVOk-4N6pUEeqS-1ymp3yUNB-kTfu-4hbNQ0uofOCv0-cas-7dc76c888-d9cdw"
 
 HEADERS_TGT = {
