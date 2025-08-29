@@ -29,11 +29,11 @@ class MLDatabaseSetup:
         """Establish connection to PostgreSQL database"""
         try:
             self.pg_conn = psycopg2.connect(
-                host=os.getenv("POSTGRES_HOST_DEV"),
-                database=os.getenv("POSTGRES_DB_DEV"),
-                user=os.getenv("POSTGRES_USER_DEV"),
-                password=os.getenv("POSTGRES_PASSWORD_DEV"),
-                port=os.getenv("POSTGRES_PORT_DEV")
+                host=os.getenv("POSTGRES_HOST"),
+                database=os.getenv("POSTGRES_DB"),
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                port=os.getenv("POSTGRES_PORT")
             )
             self.pg_conn.autocommit = True
             logger.info("✅ Connected to PostgreSQL for ML database setup")

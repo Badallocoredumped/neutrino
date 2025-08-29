@@ -6,6 +6,7 @@ raw/*.jsonl
 transformed/*.jsonl
 logs/*.log
 neutrino_energy.*.json
+/src/database/cache/tgt_cache.json
 
 # Ignore the file with real values
 docker-compose.yml
