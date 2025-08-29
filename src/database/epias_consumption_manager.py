@@ -204,7 +204,7 @@ class EPIASConsumptionCollector:
                 return False
             
             # Import and initialize repository
-            from .epias_data_repository import EPIASDataRepository  # ← Fixed import with relative path
+            from .epias_data_repository import EPIASDataRepository  # Local import to avoid circular dependency
             
             repo = EPIASDataRepository()
             success = repo.save_consumption_data(df)

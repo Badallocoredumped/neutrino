@@ -1,6 +1,7 @@
 import schedule
 import time
 import logging
+from logging import FileHandler, StreamHandler
 from datetime import datetime, timedelta
 import traceback
 from src.etl_energy_data import run_full_pipeline
@@ -14,27 +15,35 @@ from epias_energy_consumption_data import main as run_epias_pipeline, collect_la
 from database.ml_database_setup import MLDatabaseSetup
 
 def setup_logging():
-    """Setup logging for the scheduler"""
-    # Use the environment variable, fallback to /app/logs for Docker
-    log_file = os.getenv(
-        'LOG_FILE',
-        '/app/logs/energy_pipeline_scheduler.log'
-    )
-    # Create log file path
+    """Forcefully set up logging for the scheduler."""
+    log_file = os.getenv('LOG_FILE', '/app/logs/energy_pipeline_scheduler.log')
     log_dir = os.path.dirname(log_file)
     os.makedirs(log_dir, exist_ok=True)
-    
+
     print(f"📁 Setting up logging in: {log_dir}")
     print(f"📄 Log file: {log_file}")
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler()
-        ]
-    )
+
+    # Clear any existing handlers (important)
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    root_logger.setLevel(logging.INFO)
+
+    # Create and attach file handler
+    file_handler = FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+
+    # Also log to stdout
+    stream_handler = StreamHandler()
+    stream_handler.setLevel(logging.INFO)
+    stream_handler.setFormatter(file_formatter)
+    root_logger.addHandler(stream_handler)
+
+    logging.info("✅ Logging system initialized and writing to log file.")
 
 def run_pipeline_job():
     """Wrapper function to run the pipeline with error handling"""
@@ -135,10 +144,16 @@ def send_failure_notification(error_message):
 def main():
     """Main scheduler function"""
     setup_logging()
-    setup = MLDatabaseSetup()
-    setup.setup_all_tables()
     logger = logging.getLogger(__name__)
     
+
+    logger.info("🛠️ Running ML database setup")
+
+    """ setup = MLDatabaseSetup()
+    setup.setup_all_tables() """
+
+    logger.info("✅ Database setup complete")  
+
     logger.info("🚀 Starting Energy Data Pipeline Scheduler")
     logger.info("📅 Electricity Maps Schedule: Every hour at minute 5")
     logger.info("📅 EPİAŞ Schedule: Daily at 02:00 + Hourly at minute 10")
